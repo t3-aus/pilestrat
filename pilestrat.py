@@ -15,11 +15,11 @@ st.set_page_config(
 
 st.title("🏗️ Carina West Facility: Multi-Variable Stockpile Dynamics Simulator")
 st.caption(
-    "Analyzing Net-Flow, Seasonal Takt Times, Geometry Performance, and Pad Shape Constraints"
+    "Analyzing Net-Flow, Seasonal Takt Times, Geometry Performance, and Pad Shape Constraints Across All Configurations"
 )
 
 # =====================================================================
-# GEOMETRY DATABASE & DEFINITIONS
+# GEOMETRY DATABASE & DEFINITIONS (ALL 5 PROFILES)
 # =====================================================================
 GEOMETRY_PROFILES = {
     "Option C (Modular Ribbon + Walls)": {"util": 0.96, "wall": True, "takt_eff": 0.98},
@@ -84,8 +84,6 @@ st.sidebar.markdown(f"**Total Available Pad Area:** `{pad_area_sqm:,.0f}` sq met
 
 selected_pad = {"l": pad_length, "w": pad_width}
 selected_pad_name = f"Custom Pad ({pad_length:g}m x {pad_width:g}m)"
-
-geo_compare_names = ["Option C (Modular Ribbon + Walls)", "Conical (Legacy Peak)"]
 
 # =====================================================================
 # SIMULATION ENGINE
@@ -187,7 +185,7 @@ fig_surge.add_hline(
     y=rated_capacity,
     line_dash="dash",
     line_color="black",
-    annotation_text="Rated Capacity (95,000 t)",
+    annotation_text=f"Rated Capacity ({rated_capacity:,.0f} t)",
     annotation_position="bottom right"
 )
 
@@ -210,15 +208,18 @@ st.plotly_chart(fig_surge, use_container_width=True)
 st.divider()
 
 # =====================================================================
-# GRAPHIC 2 & 3: PAD SHAPE CONSTRAINT ANALYSIS (0 to OVERFILL)
+# GRAPHIC 2 & 3: MULTI-GEOMETRY COMPARISON ACROSS PAD DIMENSIONS
 # =====================================================================
-st.subheader(f"📈 Constraint Analysis: Geometry Performance on {selected_pad_name}")
-st.markdown(f"Comparing how geometry dynamics change as volume scales from 0 to rated capacity ({rated_capacity:,.0f}t) and into overfill, subject to the active pad boundary limits.")
+st.subheader(f"📈 Comprehensive Geometry Performance Analysis on {selected_pad_name}")
+st.markdown(f"Comparing all 5 stockpile geometries simultaneously as volume scales from 0 to rated capacity ({rated_capacity:,.0f}t) and into overfill, governed by your custom pad dimensions and aspect ratios.")
 
 kpi_col1, kpi_col2 = st.columns(2)
 
+# Compute curves for ALL geometries in GEOMETRY_PROFILES
+all_geo_names = list(GEOMETRY_PROFILES.keys())
 chart_data_frames = []
-for geo_name in geo_compare_names:
+
+for geo_name in all_geo_names:
     p_data = GEOMETRY_PROFILES[geo_name]
     scores = calculate_loader_efficiency_kpi(volume_steps, p_data, rated_capacity, selected_pad)
     
@@ -232,8 +233,9 @@ for geo_name in geo_compare_names:
 
 df_kpi_chart = pd.concat(chart_data_frames)
 
+# Plotly Multi-Geometry Efficiency Lines
 fig_eff = go.Figure()
-for geo_name in geo_compare_names:
+for geo_name in all_geo_names:
     df_geo = df_kpi_chart[df_kpi_chart["Geometry"] == geo_name]
     fig_eff.add_trace(
         go.Scatter(
@@ -252,29 +254,29 @@ fig_eff.update_layout(
     xaxis_title="Stockpile Volume / Tonnage on Pad (Tonnes)",
     yaxis_title="Loader Productivity & Takt Efficiency Index (%)",
     yaxis=dict(range=[20, 105]),
-    height=350,
+    height=380,
     margin=dict(l=20, r=20, t=10, b=20),
-    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    legend=dict(orientation="h", yanchor="bottom", y=1.12, xanchor="right", x=1)
 )
 kpi_col1.plotly_chart(fig_eff, use_container_width=True)
 
+# Plotly Multi-Geometry Footprint Utilization Bar Chart
 fig_util = go.Figure()
 fig_util.add_trace(go.Bar(
-    y=[geo_compare_names[0], geo_compare_names[1]],
-    x=[GEOMETRY_PROFILES[geo_compare_names[0]]["util"] * 100, GEOMETRY_PROFILES[geo_compare_names[1]]["util"] * 100],
+    y=all_geo_names,
+    x=[GEOMETRY_PROFILES[g]["util"] * 100 for g in all_geo_names],
     orientation='h',
     name='Active Storage Zone',
-    marker=dict(color=['teal', 'orange']),
-    text=[f"Active: {GEOMETRY_PROFILES[geo_compare_names[0]]['util']*100:.1f}%", 
-          f"Active: {GEOMETRY_PROFILES[geo_compare_names[1]]['util']*100:.1f}%"],
+    marker=dict(color=['teal', 'skyblue', 'orange', 'crimson', 'purple']),
+    text=[f"Active: {GEOMETRY_PROFILES[g]['util']*100:.1f}%" for g in all_geo_names],
     textposition='inside'
 ))
 
 fig_util.update_layout(
     barmode='stack',
-    title=f"Footprint Utilization Efficiency at {rated_capacity:,.0f}t",
+    title=f"Footprint Utilization Efficiency Across All Profiles ({rated_capacity:,.0f}t)",
     xaxis=dict(range=[0, 100], title="Pad Area Breakdown (%)"),
-    height=350,
+    height=380,
     margin=dict(l=20, r=20, t=30, b=20),
     showlegend=False
 )
@@ -285,13 +287,13 @@ st.divider()
 # =====================================================================
 # OPERATIONAL SUMMARY & LIMITS EXPLANATION
 # =====================================================================
-st.subheader("📖 Operational Summary: Limits and Dynamics Change")
+st.subheader("📖 Operational Summary: Multi-Geometry Benchmark & Limits")
 st.markdown(
-    f"""Running the simulator for a **{season_mode}** scenario confirms that pad shape dictates when volumetric dynamics change:
+    f"""Running the simulator under the **{season_mode}** scenario with pad dimensions set to **{pad_length:g}m × {pad_width:g}m** highlights how every geometric profile performs side-by-side:
 
-1. **Peak Harvest Surge Input:** With net addition of **+{net_daily_delta:,.0f} tonnes/day**, inventory rapidly accelerates past the **90% Surge Threshold** toward the **{rated_capacity:,.0f}t Rated Capacity**.
-2. **{selected_pad_name} Limit Collision:**
-   - **For Sloping Piles (e.g., Conical):** As volume increases past **0.75C ({rated_capacity * 0.75:,.0f} tonnes)**, the natural angle-of-repose footprint expands. On the narrow **{selected_pad['w']:g}m** width of your pad, the pile collides with boundaries prematurely, sharply accelerating loader idle time and scrape-up penalties.
-   - **For Wall-Contained Piles (e.g., Option C):** Lateral expansion is restricted by rigid boundaries. Volume converts to vertical stacking. The dynamic remains stable right up to and exceeding rated capacity, allowing the facility to absorb multi-week surges without losing takt velocity.
-3. **Custom Pad Advantage:** Adjusting dimensions to length `{pad_length:g}m` and width `{pad_width:g}m` dynamically calibrates the aspect ratio and travel penalties, ensuring wall-contained ribbon configurations safely isolate the facility from edge spillage risks."""
+1. **Peak Harvest Surge Impact:** With net addition of **+{net_daily_delta:,.0f} tonnes/day**, inventory pushes toward the **{rated_capacity:,.0f}t Rated Capacity**, testing boundary limits across all profiles.
+2. **Custom Pad Aspect Ratio & Boundary Collision:**
+   - **Wall-Contained Configurations (Option C & Rectangular High Wall):** Restrict lateral spread rigidly, maintaining high active storage footprint efficiencies ($84\%$ to $96\%$) and stable loader productivity indices under surge conditions.
+   - **Sloping Configurations (Conical, Mega-Pile Slopes, & Windrow):** Subject to natural angle-of-repose degradation. As volume passes **0.75C ({rated_capacity * 0.75:,.0f} tonnes)**, perimeter spread collides with your custom **{pad_width:g}m** width boundary, driving up loader idle travel penalties and clean-up labor.
+3. **Interactive Control:** Changing any parameter in the sidebar instantly recalculates all 5 geometry curves and utilization bars simultaneously, keeping the model fully integrated and interactive."""
 )
