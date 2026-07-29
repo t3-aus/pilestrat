@@ -7,315 +7,291 @@ import streamlit as st
 # PAGE CONFIGURATION & STYLING
 # =====================================================================
 st.set_page_config(
-    page_title="Stockpile Net-Flow & Operational Field Simulator",
+    page_title="Carina West: Advanced Stockpile Simulator",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.title("🏗️ Stockpile Net-Flow & Operational Field Simulator")
+st.title("🏗️ Carina West Facility: Multi-Variable Stockpile Dynamics Simulator")
 st.caption(
-    "Site-Level Decision Tool: Tracking Incoming/Outgoing Velocity, Pad Utilization, and 7-Day Surge Capacity"
+    "Analyzing Net-Flow, Seasonal Takt Times, Geometry Performance, and Pad Shape Constraints"
 )
 
 # =====================================================================
-# SIDEBAR: SITE OPERATIONAL CONTROLS & PARAMETERS
+# GEOMETRY DATABASE & DEFINITIONS
 # =====================================================================
-st.sidebar.header("🎛️ Site Facility & Pad Parameters")
+GEOMETRY_PROFILES = {
+    "Option C (Modular Ribbon + Walls)": {"util": 0.96, "wall": True, "takt_eff": 0.98},
+    "Windrow (Low Profile)": {"util": 0.93, "wall": False, "takt_eff": 0.90},
+    "Option A (Mega-Pile Slopes)": {"util": 0.864, "wall": False, "takt_eff": 0.75},
+    "Conical (Legacy Peak)": {"util": 0.68, "wall": False, "takt_eff": 0.60},
+    "Rectangular (High Wall)": {"util": 0.84, "wall": True, "takt_eff": 0.80}
+}
 
-pad_length = st.sidebar.number_input("Storage Pad Length (m)", value=100.0, step=10.0)
-pad_width = st.sidebar.number_input("Storage Pad Width (m)", value=100.0, step=10.0)
-total_pad_area = pad_length * pad_width
+# =====================================================================
+# SIDEBAR: SIMULATION CONTROLS
+# =====================================================================
+st.sidebar.header("🎛️ Facility & Operations Parameters")
 
-st.sidebar.divider()
-st.sidebar.header("📐 Geometry & Footprint Mode")
+# 1. Facility Baseline
+rated_capacity = st.sidebar.number_input("Rated Stockpile Capacity (Tonnes)", value=95000.0, step=5000.0)
 
-# Expanded geometry selection matching all evaluated profiles
-design_option = st.sidebar.radio(
-    "Select Configuration Mode",
+# 2. Seasonal Takt Flow Regime
+season_mode = st.sidebar.selectbox(
+    "Select Seasonal Operating Regime",
     [
-        "Option C (Modular Ribbon + Walls - 96.0% Util)",
-        "Option A (Mega-Pile Slopes - 86.4% Util)",
-        "Windrow (Low Profile - 93.0% Util)",
-        "Ribbon (Continuous - 92.0% Util)",
-        "Hybrid (Balanced - 91.0% Util)",
-        "Flat Deck (Wide Area - 86.0% Util)",
-        "Rectangular (High Wall - 84.0% Util)",
-        "Asymmetric Block (Transition - 91.0% Util)",
-        "Dual-Tier Ribbon (Multi-Level - 89.0% Util)",
-        "Conical (Legacy Peak - 68.0% Util)"
+        "Peak Harvest Surge (Inflow > Processing)",
+        "Winter Wet / High Humidity (Balanced / Managed)",
+        "Transition Period (Moderate Inflow)",
+        "Summer Steady-State (Outflow / Drawdown)"
     ]
 )
 
-# Map selected option to specific parameters
-if "Option C" in design_option:
-    pad_util_pct = 96.0
-    max_height = 2.5
-    wall_contained = True
-elif "Option A" in design_option:
-    pad_util_pct = 86.4
-    max_height = 12.0
-    wall_contained = False
-elif "Windrow" in design_option:
-    pad_util_pct = 93.0
-    max_height = 3.0
-    wall_contained = False
-elif "Ribbon" in design_option:
-    pad_util_pct = 92.0
-    max_height = 4.0
-    wall_contained = True
-elif "Hybrid" in design_option:
-    pad_util_pct = 91.0
-    max_height = 4.5
-    wall_contained = True
-elif "Flat Deck" in design_option:
-    pad_util_pct = 86.0
-    max_height = 3.5
-    wall_contained = False
-elif "Rectangular" in design_option:
-    pad_util_pct = 84.0
-    max_height = 6.0
-    wall_contained = True
-elif "Asymmetric Block" in design_option:
-    pad_util_pct = 91.0
-    max_height = 3.8
-    wall_contained = True
-elif "Dual-Tier Ribbon" in design_option:
-    pad_util_pct = 89.0
-    max_height = 4.2
-    wall_contained = True
-else:  # Conical
-    pad_util_pct = 68.0
-    max_height = 8.0
-    wall_contained = False
+# Preset velocities based on operational reality
+if "Peak Harvest" in season_mode:
+    default_in = 4500.0
+    default_out = 2500.0
+    default_inv = 65000.0
+elif "Winter Wet" in season_mode:
+    default_in = 1500.0
+    default_out = 2000.0
+    default_inv = 40000.0
+elif "Transition" in season_mode:
+    default_in = 2200.0
+    default_out = 2200.0
+    default_inv = 50000.0
+else:  # Summer
+    default_in = 1000.0
+    default_out = 2800.0
+    default_inv = 70000.0
 
-max_capacity_tonnes = st.sidebar.number_input(
-    "Total Maximum Safe Storage Capacity (Tonnes)", value=95000.0, step=5000.0
-)
-
-st.sidebar.divider()
-st.sidebar.header("🚛 Shift Net-Flow & Velocity Settings")
-
-daily_incoming = st.sidebar.number_input("Average Daily Incoming (Tonnes/Day)", value=2500.0, step=250.0)
-daily_outgoing = st.sidebar.number_input("Average Daily Outgoing / Dispatch (Tonnes/Day)", value=2000.0, step=250.0)
-current_starting_inventory = st.sidebar.number_input("Current Inventory on Pad (Tonnes)", value=65000.0, step=5000.0)
+daily_incoming = st.sidebar.number_input("Intake Velocity (Tonnes/Day)", value=default_in, step=250.0)
+daily_outgoing = st.sidebar.number_input("Processing Plant Takt Outflow (Tonnes/Day)", value=default_out, step=250.0)
+current_starting_inventory = st.sidebar.number_input("Starting Pad Inventory (Tonnes)", value=default_inv, step=5000.0)
 
 net_daily_delta = daily_incoming - daily_outgoing
 
+# 3. Pad Footprint & Shape Constraints (Fully Adjustable Dimensions)
+st.sidebar.divider()
+st.sidebar.header("📐 Pad Constraint Analysis")
+
+pad_length = st.sidebar.number_input("Pad Length (m)", value=150.0, step=5.0)
+pad_width = st.sidebar.number_input("Pad Width (m)", value=66.66, step=2.0)
+pad_area_sqm = pad_length * pad_width
+
+st.sidebar.markdown(f"**Total Available Pad Area:** `{pad_area_sqm:,.0f}` sq meters")
+
+selected_pad = {"l": pad_length, "w": pad_width}
+selected_pad_name = f"Custom Pad ({pad_length:g}m x {pad_width:g}m)"
+
+geo_compare_names = ["Option C (Modular Ribbon + Walls)", "Conical (Legacy Peak)"]
+
 # =====================================================================
-# 7-DAY FORWARD SIMULATION ENGINE
+# SIMULATION ENGINE
 # =====================================================================
-def run_operational_simulation(start_inv, daily_in, daily_out, max_cap, util_pct):
+
+def run_net_flow_simulation(start_inv, daily_in, daily_out, rated_cap):
     days = [f"Day {i}" for i in range(1, 8)]
     inventory_track = []
-    utilization_track = []
     status_track = []
     
     running_inv = start_inv
     for day in range(7):
         running_inv += (daily_in - daily_out)
-        running_inv = np.clip(running_inv, 0.0, max_cap * 1.15) # Allow slight overfill tracking
-        
-        util_ratio = (running_inv / max_cap) * 100.0
+        running_inv = np.clip(running_inv, 0.0, rated_cap * 1.15) 
+        util_ratio = (running_inv / rated_cap) * 100.0
         
         inventory_track.append(round(running_inv, 1))
-        utilization_track.append(round(util_ratio, 1))
         
-        # Traffic light operational triggers
         if util_ratio < 75.0:
             status_track.append("🟢 Normal Ops")
         elif util_ratio <= 90.0:
-            status_track.append("🟡 Surge Inflow Alert")
+            status_track.append("🟡 Surge Alert")
         else:
-            status_track.append("🔴 Critical / Spill Risk")
+            status_track.append("🔴 Overfill Risk")
             
-    return days, inventory_track, utilization_track, status_track
+    return days, inventory_track, status_track
 
-days_list, inv_track, util_track, status_list = run_operational_simulation(
-    current_starting_inventory, daily_incoming, daily_outgoing, max_capacity_tonnes, pad_util_pct
+volume_steps = np.linspace(0, rated_capacity * 1.15, 50)
+
+def calculate_loader_efficiency_kpi(vol_array, profile_data, rated_cap, pad_config):
+    util_pct = profile_data["util"]
+    takt_eff = profile_data["takt_eff"]
+    is_wall = profile_data["wall"]
+    
+    pad_l = pad_config["l"]
+    pad_w = pad_config["w"]
+    pad_aspect_ratio = max(pad_l, pad_w) / min(pad_l, pad_w)
+    
+    travel_penalty = 1.0 if pad_aspect_ratio == 1.0 else (0.95 if is_wall else 0.85)
+    
+    loader_scores = []
+    for v in vol_array:
+        load_ratio = v / rated_cap
+        base_score = takt_eff * 100.0 * travel_penalty
+        
+        if load_ratio <= 0.75:
+            score = base_score
+        elif load_ratio <= 1.0:
+            decay_rate = 0.2 if is_wall else 0.4
+            score = base_score * (1.0 - (load_ratio - 0.75) * decay_rate)
+        else:
+            overfill_penalty = 0.3 if is_wall else 0.6
+            score = max(30.0, base_score * (0.8 - (load_ratio - 1.0) * overfill_penalty))
+            
+        loader_scores.append(round(score, 1))
+        
+    return loader_scores
+
+days_list, inv_track, status_list = run_net_flow_simulation(
+    current_starting_inventory, daily_incoming, daily_outgoing, rated_capacity
 )
 
 # =====================================================================
-# MAIN DASHBOARD: OPERATOR VIEW (CLEAR, SCANNABLE, ACTIONABLE)
+# MAIN DASHBOARD LAYOUT
 # =====================================================================
-
+st.subheader(f"Operational Overview: {season_mode} | Active Pad: {selected_pad_name}")
 col1, col2, col3, col4 = st.columns(4)
 
-current_util = util_track[0]
+current_util_pct = (inv_track[0] / rated_capacity) * 100.0
 current_status = status_list[0]
 
-col1.metric("Current Pad Inventory", f"{inv_track[0]:,.0f} t", f"{net_daily_delta:+,.0f} t/day Net Delta")
-col2.metric("Pad Footprint Utilization", f"{pad_util_pct:.1f}%", "Modular Wall Contained" if wall_contained else "Sloping Edge Margins")
-col3.metric("Current Capacity Load", f"{current_util:.1f}%", current_status)
-col4.metric("7-Day Projecting Status", status_list[-1], f"End Inv: {inv_track[-1]:,.0f} t")
-
-st.divider()
-
-col_left, col_right = st.columns([1.2, 1.0])
-
-with col_left:
-    st.subheader("📊 7-Day Rolling Inventory & Surge Trajectory")
-    st.markdown("Tracking how net volume fluctuations (incoming vs. outgoing) impact pad capacity limits over the coming week.")
-    
-    fig_surge = go.Figure()
-    
-    fig_surge.add_trace(
-        go.Scatter(
-            x=days_list,
-            y=inv_track,
-            mode='lines+markers+text',
-            name='Projected Inventory',
-            line=dict(color='teal' if wall_contained else 'crimson', width=4),
-            text=[f"{v:,.0f}t" for v in inv_track],
-            textposition="top center"
-        )
-    )
-    
-    fig_surge.add_hline(
-        y=max_capacity_tonnes,
-        line_dash="dash",
-        line_color="black",
-        annotation_text="Max Safe Pad Capacity (100%)",
-        annotation_position="bottom right"
-    )
-    
-    fig_surge.add_hline(
-        y=max_capacity_tonnes * 0.90,
-        line_dash="dot",
-        line_color="orange",
-        annotation_text="Amber Surge Threshold (90%)",
-        annotation_position="top right"
-    )
-
-    fig_surge.update_layout(
-        yaxis_title="Stockpile Tonnage (Tonnes)",
-        xaxis_title="Lookahead Horizon",
-        height=400,
-        margin=dict(l=20, r=20, t=30, b=20)
-    )
-    st.plotly_chart(fig_surge, use_container_width=True)
-
-with col_right:
-    st.subheader("📋 Shift Supervisor 7-Day Action Plan")
-    st.markdown("Operational status and loader/truck staging recommendations based on net volume momentum.")
-    
-    shift_df = pd.DataFrame({
-        "Day": days_list,
-        "Projected Tonnage": [f"{v:,.0f} t" for v in inv_track],
-        "Capacity (%)": [f"{u:.1f}%" for u in util_track],
-        "Field Status": status_list
-    })
-    
-    st.dataframe(shift_df, use_container_width=True, hide_index=True)
-    
-    if net_daily_delta > 0:
-        st.info(f"💡 **Inflow Surge Active:** Net addition of **+{net_daily_delta:,.0f} tonnes/day**. {'Modular walls are containing side spread safely.' if wall_contained else 'Monitor pile angle stability and edge spillage.'}")
-    elif net_daily_delta < 0:
-        st.success(f"💡 **Outflow Drawdown Active:** Net reduction of **{net_daily_delta:,.0f} tonnes/day**. {'Bounded lanes are clearing systematically with minimal loader scraping.' if wall_contained else 'Perimeter scrape-up required for sloping margins.'}")
-    else:
-         st.warning("⚖️ **Balanced Flow:** Incoming tonnage equals outgoing dispatches. Pad footprint is steady.")
+col1.metric("Current Inventory", f"{inv_track[0]:,.0f} t", f"{net_daily_delta:+,.0f} t/day Net Takt")
+col2.metric("Current Capacity Load", f"{current_util_pct:.1f}%", current_status)
+col3.metric("7-Day Status Projection", status_list[-1], f"End Inv: {inv_track[-1]:,.0f} t")
+col4.metric("Max Facility Takt", f"{rated_capacity:,.0f} t", "Rated Capacity Baseline")
 
 st.divider()
 
 # =====================================================================
-# NEW GRAPHICAL KPI SECTION: VISUALIZING EFFICIENCY & EQUIPMENT PRODUCTIVITY
+# GRAPHIC 1: 7-DAY INVENTORY SURGE TRAJECTORY
 # =====================================================================
-st.subheader("📈 Operational KPI & Efficiency Visuals")
+st.subheader("📊 7-Day Rolling Inventory Surge Trajectory vs. Capacity Limits")
+
+fig_surge = go.Figure()
+
+fig_surge.add_trace(
+    go.Scatter(
+        x=days_list,
+        y=inv_track,
+        mode='lines+markers+text',
+        name='Projected Inventory',
+        line=dict(color='teal', width=4),
+        text=[f"{v:,.0f}t" for v in inv_track],
+        textposition="top center"
+    )
+)
+
+fig_surge.add_hline(
+    y=rated_capacity,
+    line_dash="dash",
+    line_color="black",
+    annotation_text="Rated Capacity (95,000 t)",
+    annotation_position="bottom right"
+)
+
+fig_surge.add_hline(
+    y=rated_capacity * 0.90,
+    line_dash="dot",
+    line_color="orange",
+    annotation_text="Surge Threshold (90%)",
+    annotation_position="top right"
+)
+
+fig_surge.update_layout(
+    yaxis_title="Stockpile Tonnage (Tonnes)",
+    xaxis_title="Lookahead Horizon",
+    height=400,
+    margin=dict(l=20, r=20, t=30, b=20)
+)
+st.plotly_chart(fig_surge, use_container_width=True)
+
+st.divider()
+
+# =====================================================================
+# GRAPHIC 2 & 3: PAD SHAPE CONSTRAINT ANALYSIS (0 to OVERFILL)
+# =====================================================================
+st.subheader(f"📈 Constraint Analysis: Geometry Performance on {selected_pad_name}")
+st.markdown(f"Comparing how geometry dynamics change as volume scales from 0 to rated capacity ({rated_capacity:,.0f}t) and into overfill, subject to the active pad boundary limits.")
+
 kpi_col1, kpi_col2 = st.columns(2)
 
-with kpi_col1:
-    st.markdown("#### 📐 Storage Efficiency: Active vs. Wasted Pad Area")
-    st.markdown("Visualizing the footprint utilization percentage converted into active storage vs. perimeter slope waste.")
+chart_data_frames = []
+for geo_name in geo_compare_names:
+    p_data = GEOMETRY_PROFILES[geo_name]
+    scores = calculate_loader_efficiency_kpi(volume_steps, p_data, rated_capacity, selected_pad)
     
-    # Create a visual horizontal stacked bar representing pad utilization
-    fig_util = go.Figure()
-    fig_util.add_trace(go.Bar(
-        x=[pad_util_pct],
-        y=["Pad Area"],
-        orientation='h',
-        name='Active Storage Zone',
-        marker=dict(color='teal' if wall_contained else 'orange'),
-        text=f"Active: {pad_util_pct:.1f}%",
-        textposition='inside'
-    ))
-    fig_util.add_trace(go.Bar(
-        x=[round(100.0 - pad_util_pct, 1)],
-        y=["Pad Area"],
-        orientation='h',
-        name='Wasted Slope / Margin Zone',
-        marker=dict(color='crimson' if pad_util_pct < 90 else 'lightgray'),
-        text=f"Wasted: {round(100.0 - pad_util_pct, 1):.1f}%",
-        textposition='inside'
-    ))
-    fig_util.update_layout(
-        barmode='stack',
-        xaxis=dict(range=[0, 100], title="Pad Footprint Breakdown (%)"),
-        yaxis=dict(showticklabels=False),
-        height=180,
-        margin=dict(l=10, r=10, t=10, b=30),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    st.plotly_chart(fig_util, use_container_width=True)
+    df_temp = pd.DataFrame({
+        "Stockpile Volume (t)": volume_steps,
+        "Loader Productivity Index (%)": scores,
+        "Geometry": geo_name,
+        "Pad Shape": selected_pad_name
+    })
+    chart_data_frames.append(df_temp)
 
-with kpi_col2:
-    st.markdown("#### 🚜 Equipment Productivity: Loader Clean-Up Efficiency")
-    st.markdown("Estimated front-end loader loading efficiency index based on geometry boundaries and outflow velocity.")
-    
-    # Calculate an efficiency index score
-    base_eff = 95.0 if wall_contained else 70.0
-    if net_daily_delta < 0 and not wall_contained:
-        loader_score = max(50.0, base_eff - 15.0) # Penalty for scraping sloping margins during drawdown
-    else:
-        loader_score = base_eff
-        
-    fig_gauge = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = loader_score,
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': "Loader Productivity Index (%)"},
-        gauge = {
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "teal" if loader_score > 80 else "orange"},
-            'steps': [
-                {'range': [0, 65], 'color': "rgba(255, 0, 0, 0.2)"},
-                {'range': [65, 85], 'color': "rgba(255, 165, 0, 0.2)"},
-                {'range': [85, 100], 'color': "rgba(0, 128, 128, 0.2)"}
-            ],
-            'threshold': {
-                'line': {'color': "black", 'width': 4},
-                'thickness': 0.75,
-                'value': loader_score
-            }
-        }
-    ))
-    fig_gauge.update_layout(height=180, margin=dict(l=20, r=20, t=30, b=10))
-    st.plotly_chart(fig_gauge, use_container_width=True)
+df_kpi_chart = pd.concat(chart_data_frames)
+
+fig_eff = go.Figure()
+for geo_name in geo_compare_names:
+    df_geo = df_kpi_chart[df_kpi_chart["Geometry"] == geo_name]
+    fig_eff.add_trace(
+        go.Scatter(
+            x=df_geo["Stockpile Volume (t)"],
+            y=df_geo["Loader Productivity Index (%)"],
+            mode='lines',
+            name=geo_name,
+            line=dict(width=3)
+        )
+    )
+
+fig_eff.add_vline(x=rated_capacity, line_dash="dash", line_color="black")
+fig_eff.add_vline(x=rated_capacity * 0.90, line_dash="dot", line_color="orange")
+
+fig_eff.update_layout(
+    xaxis_title="Stockpile Volume / Tonnage on Pad (Tonnes)",
+    yaxis_title="Loader Productivity & Takt Efficiency Index (%)",
+    yaxis=dict(range=[20, 105]),
+    height=350,
+    margin=dict(l=20, r=20, t=10, b=20),
+    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+)
+kpi_col1.plotly_chart(fig_eff, use_container_width=True)
+
+fig_util = go.Figure()
+fig_util.add_trace(go.Bar(
+    y=[geo_compare_names[0], geo_compare_names[1]],
+    x=[GEOMETRY_PROFILES[geo_compare_names[0]]["util"] * 100, GEOMETRY_PROFILES[geo_compare_names[1]]["util"] * 100],
+    orientation='h',
+    name='Active Storage Zone',
+    marker=dict(color=['teal', 'orange']),
+    text=[f"Active: {GEOMETRY_PROFILES[geo_compare_names[0]]['util']*100:.1f}%", 
+          f"Active: {GEOMETRY_PROFILES[geo_compare_names[1]]['util']*100:.1f}%"],
+    textposition='inside'
+))
+
+fig_util.update_layout(
+    barmode='stack',
+    title=f"Footprint Utilization Efficiency at {rated_capacity:,.0f}t",
+    xaxis=dict(range=[0, 100], title="Pad Area Breakdown (%)"),
+    height=350,
+    margin=dict(l=20, r=20, t=30, b=20),
+    showlegend=False
+)
+kpi_col2.plotly_chart(fig_util, use_container_width=True)
 
 st.divider()
 
 # =====================================================================
-# FIELD OPERATOR BRIEFING: HOW TO READ THIS ON SITE
+# OPERATIONAL SUMMARY & LIMITS EXPLANATION
 # =====================================================================
-st.subheader("🚜 On-Site Field Execution Guide")
+st.subheader("📖 Operational Summary: Limits and Dynamics Change")
+st.markdown(
+    f"""Running the simulator for a **{season_mode}** scenario confirms that pad shape dictates when volumetric dynamics change:
 
-op_col1, op_col2 = st.columns(2)
-
-with op_col1:
-    st.markdown("#### 🟢 Green / Amber / Red Zone Rules")
-    st.markdown("""
-    *   **< 75% Capacity (Green):** Normal operations. Full loader maneuverability and clear truck turn-around lanes.
-    *   **75% – 90% Capacity (Amber):** Surge Inflow Alert. Supervisor reviews incoming truck delivery schedules against dispatch rates to prevent edge spillage.
-    *   **> 90% Capacity (Red):** Critical Threshold. Trigger priority outloading or halt secondary intake until clear lanes are established.
-    """)
-
-with op_col2:
-    st.markdown("#### 📐 Selected Footprint Impact")
-    st.markdown(f"**Current Configuration:** `{design_option}`")
-    if wall_contained:
-        st.markdown("""
-        *   *Field Benefit:* Rigid boundaries or low profiles provide high volume utilization. Material packs uniformly against hard limits, ensuring predictable clearing cycles and zero edge spillage during surge inflows.
-        """)
-    else:
-        st.markdown("""
-        *   *Field Benefit:* Sloping perimeter edges consume more pad footprint. Requires extra front-end loader hours to scrape scattered material from dead-zone margins as inventory shrinks.
-        """)
+1. **Peak Harvest Surge Input:** With net addition of **+{net_daily_delta:,.0f} tonnes/day**, inventory rapidly accelerates past the **90% Surge Threshold** toward the **{rated_capacity:,.0f}t Rated Capacity**.
+2. **{selected_pad_name} Limit Collision:**
+   - **For Sloping Piles (e.g., Conical):** As volume increases past **0.75C ({rated_capacity * 0.75:,.0f} tonnes)**, the natural angle-of-repose footprint expands. On the narrow **{selected_pad['w']:g}m** width of your pad, the pile collides with boundaries prematurely, sharply accelerating loader idle time and scrape-up penalties.
+   - **For Wall-Contained Piles (e.g., Option C):** Lateral expansion is restricted by rigid boundaries. Volume converts to vertical stacking. The dynamic remains stable right up to and exceeding rated capacity, allowing the facility to absorb multi-week surges without losing takt velocity.
+3. **Custom Pad Advantage:** Adjusting dimensions to length `{pad_length:g}m` and width `{pad_width:g}m` dynamically calibrates the aspect ratio and travel penalties, ensuring wall-contained ribbon configurations safely isolate the facility from edge spillage risks."""
+)
