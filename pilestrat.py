@@ -218,6 +218,82 @@ with col_right:
 st.divider()
 
 # =====================================================================
+# NEW GRAPHICAL KPI SECTION: VISUALIZING EFFICIENCY & EQUIPMENT PRODUCTIVITY
+# =====================================================================
+st.subheader("📈 Operational KPI & Efficiency Visuals")
+kpi_col1, kpi_col2 = st.columns(2)
+
+with kpi_col1:
+    st.markdown("#### 📐 Storage Efficiency: Active vs. Wasted Pad Area")
+    st.markdown("Visualizing the footprint utilization percentage converted into active storage vs. perimeter slope waste.")
+    
+    # Create a visual horizontal stacked bar representing pad utilization
+    fig_util = go.Figure()
+    fig_util.add_trace(go.Bar(
+        x=[pad_util_pct],
+        y=["Pad Area"],
+        orientation='h',
+        name='Active Storage Zone',
+        marker=dict(color='teal' if wall_contained else 'orange'),
+        text=f"Active: {pad_util_pct:.1f}%",
+        textposition='inside'
+    ))
+    fig_util.add_trace(go.Bar(
+        x=[round(100.0 - pad_util_pct, 1)],
+        y=["Pad Area"],
+        orientation='h',
+        name='Wasted Slope / Margin Zone',
+        marker=dict(color='crimson' if pad_util_pct < 90 else 'lightgray'),
+        text=f"Wasted: {round(100.0 - pad_util_pct, 1):.1f}%",
+        textposition='inside'
+    ))
+    fig_util.update_layout(
+        barmode='stack',
+        xaxis=dict(range=[0, 100], title="Pad Footprint Breakdown (%)"),
+        yaxis=dict(showticklabels=False),
+        height=180,
+        margin=dict(l=10, r=10, t=10, b=30),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_util, use_container_width=True)
+
+with kpi_col2:
+    st.markdown("#### 🚜 Equipment Productivity: Loader Clean-Up Efficiency")
+    st.markdown("Estimated front-end loader loading efficiency index based on geometry boundaries and outflow velocity.")
+    
+    # Calculate an efficiency index score
+    base_eff = 95.0 if wall_contained else 70.0
+    if net_daily_delta < 0 and not wall_contained:
+        loader_score = max(50.0, base_eff - 15.0) # Penalty for scraping sloping margins during drawdown
+    else:
+        loader_score = base_eff
+        
+    fig_gauge = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = loader_score,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Loader Productivity Index (%)"},
+        gauge = {
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "teal" if loader_score > 80 else "orange"},
+            'steps': [
+                {'range': [0, 65], 'color': "rgba(255, 0, 0, 0.2)"},
+                {'range': [65, 85], 'color': "rgba(255, 165, 0, 0.2)"},
+                {'range': [85, 100], 'color': "rgba(0, 128, 128, 0.2)"}
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                'thickness': 0.75,
+                'value': loader_score
+            }
+        }
+    ))
+    fig_gauge.update_layout(height=180, margin=dict(l=20, r=20, t=30, b=10))
+    st.plotly_chart(fig_gauge, use_container_width=True)
+
+st.divider()
+
+# =====================================================================
 # FIELD OPERATOR BRIEFING: HOW TO READ THIS ON SITE
 # =====================================================================
 st.subheader("🚜 On-Site Field Execution Guide")
